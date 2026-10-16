@@ -2,9 +2,10 @@ import subprocess
 import logging
 from openai import OpenAIError
 from rest_framework import generics, status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.decorators import api_view, permission_classes, throttle_classes, throttle_scope
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from django.conf import settings
 from .models import Video
 from .serializers import VideoSerializer
@@ -36,15 +37,24 @@ def health(request):
     return Response({'status': 'ok', 'service': 'video-intelligence-api', 'openaiConfigured': bool(settings.OPENAI_API_KEY)})
 
 class VideoListCreateView(generics.ListCreateAPIView):
-    queryset = Video.objects.all()
     serializer_class = VideoSerializer
+
+    def get_queryset(self):
+        return Video.objects.filter(owner=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
 
 class VideoDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Video.objects.all()
     serializer_class = VideoSerializer
 
+    def get_queryset(self):
+        return Video.objects.filter(owner=self.request.user)
+
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
+@throttle_scope('ai')
 def analyze(request):
     title = str(request.data.get('title', '')).strip()
     transcript = str(request.data.get('transcript', '')).strip()
@@ -62,10 +72,12 @@ def analyze(request):
         return Response({'detail': str(error)}, status=status.HTTP_502_BAD_GATEWAY)
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
+@throttle_scope('ai')
 def reanalyze(request, pk):
     try:
-        video = Video.objects.get(pk=pk)
+        video = Video.objects.get(pk=pk, owner=request.user)
     except Video.DoesNotExist:
         return Response({'detail': 'Video not found.'}, status=status.HTTP_404_NOT_FOUND)
     if not video.transcript:
@@ -84,7 +96,9 @@ def reanalyze(request, pk):
         return openai_failure(error, 'transcript analysis')
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
+@throttle_scope('ai')
 def upload_video(request):
     uploaded = request.FILES.get('file')
     title = str(request.data.get('title', '')).strip() or (uploaded.name.rsplit('.', 1)[0] if uploaded else '')
@@ -110,7 +124,7 @@ def upload_video(request):
     except (ValueError, TypeError) as error:
         return Response({'detail': str(error)}, status=status.HTTP_502_BAD_GATEWAY)
     try:
-        video = Video.objects.create(title=title, source_url=str(request.data.get('sourceUrl', '')), source_type='upload', transcript=transcript,
+        video = Video.objects.create(owner=request.user, title=title, source_url=str(request.data.get('sourceUrl', '')), source_type='upload', transcript=transcript,
             summary=result['summary'], categories=result['categories'], key_topics=result['keyTopics'],
             kb_score=result['kbScore'], training_ready=result['trainingReady'], status='indexed', analysis_mode=result['analysisMode'])
         from .serializers import VideoSerializer

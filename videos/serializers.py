@@ -1,5 +1,35 @@
+import uuid
+from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from .models import Video
+
+User = get_user_model()
+
+class RegisterSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    password = serializers.CharField(min_length=12, max_length=128, write_only=True, trim_whitespace=False)
+
+    def validate_password(self, value):
+        validate_password(value)
+        return value
+
+    def validate_email(self, value):
+        value = value.strip().lower()
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError('An account with this email already exists.')
+        return value
+
+    def create(self, validated_data):
+        email = validated_data['email']
+        username = f'user_{uuid.uuid4().hex}'
+        user = User.objects.create_user(username=username, email=email, password=validated_data['password'], first_name=validated_data['name'].strip())
+        return user
+
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(max_length=128, write_only=True, trim_whitespace=False)
 
 class VideoSerializer(serializers.ModelSerializer):
     sourceUrl = serializers.URLField(source='source_url', required=False, allow_blank=True)
