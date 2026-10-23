@@ -40,9 +40,15 @@ REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
     'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework.authentication.TokenAuthentication'],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
-    'DEFAULT_THROTTLE_RATES': {'register': '5/hour', 'login': '10/minute', 'ai': '5/hour'},
+    'DEFAULT_THROTTLE_RATES': {'register': '5/hour', 'login': '10/minute', 'ai': '5/hour', 'sharepoint-start': '3/hour'},
 }
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+MS_GRAPH_TENANT_ID = os.getenv('MS_GRAPH_TENANT_ID', '')
+MS_GRAPH_CLIENT_ID = os.getenv('MS_GRAPH_CLIENT_ID', '')
+MS_GRAPH_CLIENT_SECRET = os.getenv('MS_GRAPH_CLIENT_SECRET', '')
+MS_GRAPH_DRIVE_ID = os.getenv('MS_GRAPH_DRIVE_ID', '')
+MS_GRAPH_FOLDER_ITEM_ID = os.getenv('MS_GRAPH_FOLDER_ITEM_ID', '')
+MS_GRAPH_FOLDER_NAME = os.getenv('MS_GRAPH_FOLDER_NAME', 'SharePoint video folder')
 DATA_UPLOAD_MAX_MEMORY_SIZE = 550 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024

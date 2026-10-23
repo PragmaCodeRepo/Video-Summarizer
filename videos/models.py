@@ -27,3 +27,22 @@ class Video(models.Model):
     class Meta:
         ordering = ['-created_at']
 
+
+class SharePointImport(models.Model):
+    STATUSES = [('queued', 'Queued'), ('processing', 'Processing'), ('completed', 'Completed'), ('completed_with_errors', 'Completed with errors'), ('failed', 'Failed')]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='sharepoint_imports', on_delete=models.CASCADE)
+    folder_name = models.CharField(max_length=255)
+    folder_url = models.URLField(blank=True)
+    status = models.CharField(max_length=24, choices=STATUSES, default='queued')
+    total = models.PositiveIntegerField(default=0)
+    processed = models.PositiveIntegerField(default=0)
+    imported = models.PositiveIntegerField(default=0)
+    failed = models.PositiveIntegerField(default=0)
+    errors = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+

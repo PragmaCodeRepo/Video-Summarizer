@@ -25,3 +25,15 @@ Set `OPENAI_API_KEY` in `.env` before analyzing transcripts or videos. Keep `.en
 - Registration and login are rate limited; AI analysis is limited to five requests per user per hour.
 
 The health endpoint is public. Video, upload, transcription, analysis, and reanalysis endpoints require authentication.
+
+## SharePoint video folder import
+
+The configured folder import uses Microsoft Graph app-only access. The folder is pinned by its drive and item IDs in the backend environment; the browser never receives the Microsoft app credential. The importer recursively finds MP4, MOV, and WEBM files, skips already-indexed items in the signed-in user's library, and saves each summary and transcript as it completes.
+
+1. In Microsoft Entra, rotate the client secret that was used for setup and grant the registered application read access to the target folder (or its dedicated site/library). Microsoft Graph app-only access requires admin consent and an explicit resource grant when using a selected permission.
+2. Set `MS_GRAPH_TENANT_ID`, `MS_GRAPH_CLIENT_ID`, `MS_GRAPH_CLIENT_SECRET`, `MS_GRAPH_DRIVE_ID`, `MS_GRAPH_FOLDER_ITEM_ID`, and `MS_GRAPH_FOLDER_NAME` in `backend/.env` or the deployment's secret store. The tenant, app, drive, and folder IDs from the supplied setup guide are prefilled in the local `.env` and `.env.example`; enter only the newly rotated secret in the backend environment. Do not commit `.env` or place the secret in frontend variables.
+3. Apply migrations: `python manage.py migrate`.
+4. Start one import worker alongside Django: `python manage.py process_sharepoint_imports`. Keep a single worker process for this SQLite-backed POC. The worker polls the database queue and continues processing even after the browser closes.
+5. Sign in, then click **Analyze folder videos** in the SharePoint folder panel. The dashboard polls job progress and refreshes the library when processing completes. Use `python manage.py process_sharepoint_imports --once` to drain one queued import and exit.
+
+Only MP4, MOV, and WEBM are imported, with a 500 MB per-video cap. The Graph `/content` redirect's short-lived download URL is used only in memory and is never saved or logged. For a multi-process production deployment, move this queue from SQLite to a dedicated task broker/database and run the worker under a service manager.

@@ -7,9 +7,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from django.conf import settings
-from .models import Video
+from .models import SharePointImport, Video
 from .serializers import VideoSerializer
 from .services import analyze_transcript, transcribe_video
+from .sharepoint import is_configured
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,47 @@ def openai_failure(error, stage):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def health(request):
-    return Response({'status': 'ok', 'service': 'video-intelligence-api', 'openaiConfigured': bool(settings.OPENAI_API_KEY)})
+    return Response({'status': 'ok', 'service': 'video-intelligence-api', 'openaiConfigured': bool(settings.OPENAI_API_KEY), 'sharepointConfigured': is_configured(), 'sharepointFolderName': settings.MS_GRAPH_FOLDER_NAME})
+
+
+def sharepoint_import_payload(job):
+    return {
+        'id': str(job.id), 'folderName': job.folder_name, 'status': job.status,
+        'total': job.total, 'processed': job.processed, 'imported': job.imported,
+        'failed': job.failed, 'errors': job.errors,
+        'createdAt': job.created_at, 'updatedAt': job.updated_at,
+    }
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def sharepoint_import_list(request):
+    jobs = SharePointImport.objects.filter(owner=request.user)[:10]
+    return Response([sharepoint_import_payload(job) for job in jobs])
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@throttle_classes([ScopedRateThrottle])
+@throttle_scope('sharepoint-start')
+def sharepoint_imports(request):
+    if not is_configured():
+        return Response({'detail': 'SharePoint is not configured. Add the Microsoft Graph settings to the Django backend.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    active = SharePointImport.objects.filter(owner=request.user, status__in=['queued', 'processing']).first()
+    if active:
+        return Response(sharepoint_import_payload(active), status=status.HTTP_202_ACCEPTED)
+    job = SharePointImport.objects.create(owner=request.user, folder_name=settings.MS_GRAPH_FOLDER_NAME)
+    return Response(sharepoint_import_payload(job), status=status.HTTP_202_ACCEPTED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def sharepoint_import_detail(request, pk):
+    try:
+        job = SharePointImport.objects.get(pk=pk, owner=request.user)
+    except SharePointImport.DoesNotExist:
+        return Response({'detail': 'SharePoint import was not found.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(sharepoint_import_payload(job))
 
 class VideoListCreateView(generics.ListCreateAPIView):
     serializer_class = VideoSerializer
